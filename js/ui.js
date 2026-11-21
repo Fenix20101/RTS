@@ -147,7 +147,7 @@ const UI = {
   onWheel(e) {
     e.preventDefault();
     const ix = e.clientX / R.cam.z + R.cam.x, iy = e.clientY / R.cam.z + R.cam.y;
-    const z = clamp(R.cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.4, 2.5);
+    const z = clamp(R.cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.4, 4.5);
     R.cam.z = z;
     R.cam.x = ix - e.clientX / z; R.cam.y = iy - e.clientY / z;
     R.clampCam();

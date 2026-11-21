@@ -68,6 +68,7 @@ function startGame() {
 let lastT = 0, visT = 0, cleanT = 0;
 function step(dt) {
   G.time += dt;
+  buildUnitGrid();
   for (const u of G.units) u.update(dt);
   separate(dt);
   updateProjectiles(dt);

@@ -15,7 +15,7 @@ argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 OUT = os.path.abspath(argv[0] if argv else 'units_raw')
 ONLY = argv[1].split(',') if len(argv) > 1 and argv[1] not in ('', 'all') else None
 DIRS = int(argv[2]) if len(argv) > 2 else 32
-IDIRS = int(argv[3]) if len(argv) > 3 else 16   # направлений для пехоты
+IDIRS = int(argv[3]) if len(argv) > 3 else 24   # направлений для пехоты
 S = 3.0                      # пикселей на игровую единицу
 SQ = math.sqrt(2.0 / 3.0)    # сжатие высот под игровую проекцию
 FW, FH = 384, 320            # кадр; начало координат — в центре
@@ -908,6 +908,8 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     exec(open(os.path.join(here, 'blender_vehicles.py'), encoding='utf-8').read(), globals())
     exec(open(os.path.join(here, 'blender_props.py'), encoding='utf-8').read(), globals())
+    exec(open(os.path.join(here, 'blender_infantry.py'), encoding='utf-8').read(), globals())
+    global S
     meta_path = os.path.join(OUT, 'meta.json')
     meta = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
     for name, kind, fac, arg in models():
@@ -921,9 +923,11 @@ def main():
             render_set(sc, r, name + '_h', True, 1)
             print('DONE', name, round(time.time() - t0, 1), 's', flush=True)
             continue
+        S = 3.0
         if kind == 'inf':
+            S = 5.0   # пехота крупнее: чёткая и при сильном приближении
             for pose in POSES:
-                sc = setup_scene(128, 112, 24); MATS.clear()
+                sc = setup_scene(200, 184, 24); MATS.clear()
                 r = make_root('obj')
                 r.scale = (0.8, 0.8, 0.8 * SQ)   # рост ≈ 1,78 м ×1,1 в масштабе техники
                 build_soldier(fac, arg, pose, r)

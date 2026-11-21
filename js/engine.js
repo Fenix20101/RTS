@@ -112,7 +112,7 @@ const PF = {
         if (k >= 4) {
           if (!costs[m.terr[cy * W + nx]] || !costs[m.terr[ny * W + cx]]) continue;
         }
-        const extra = veh && this.nearObs[n] ? 1.0 : 0;
+        const extra = (veh && this.nearObs[n] ? 1.0 : 0) + (this.penal && this.penal.has(n) ? 6 : 0);
         const ng = this.g[cur] + (k >= 4 ? 1.4142 : 1) * (c + extra);
         if (this.seen[n] !== st || ng < this.g[n]) {
           this.seen[n] = st; this.g[n] = ng; this.parent[n] = cur;
@@ -290,6 +290,8 @@ class Unit {
     this.trackD = 0; this.kills = 0; this.group = 0; this.lastHitT = -99; this.lastAttacker = null;
     this.supplyT = 0; this.flash = 0; this.anim = Math.random() * 10; this.curSpd = 0;
     this.proneT = 0; this.crawl = false; this.brainT = Math.random() * 0.5; this.coverCD = 0;
+    this.avoidSide = Math.random() < 0.5 ? 1 : -1; this.waitT = 0; this.dodge = null;   // обход соседей
+    this.walkD = Math.random() * 20; this.throwT = 0; this.lookT = 2 + Math.random() * 6;
     this.stance = null;   // приказ игрока: 'prone' — лежать (и ползти), 'stand' — не залегать самим; null — по обстановке
   }
   // лежит: по приказу, подавлен, ползёт или залёг в бою (стоя на месте)
@@ -352,7 +354,7 @@ class Unit {
       const last = this.path[this.path.length - 1];
       if (m.passablePx(x, y, this.cls) && Math.hypot(last.x - x, last.y - y) < TILE * 1.5) { last.x = x; last.y = y; }
     }
-    this.pathI = 0; this.stuckT = 0; this.stuckRef = { x: this.x, y: this.y };
+    this.pathI = 0; this.stuckT = 0; this.stuckRef = { x: this.x, y: this.y }; this.dodge = null;
     return !!this.path;
   }
   orderMove(x, y, amove = false) {
@@ -378,7 +380,15 @@ class Unit {
   update(dt) {
     if (!this.alive) return;
     this.suppression = Math.max(0, this.suppression - 18 * dt);
-    if (this.cls === 'inf') { if (this.proneT > 0) this.proneT -= dt; this.coverCD -= dt; this.brain(dt); }
+    if (this.cls === 'inf') {
+      if (this.proneT > 0) this.proneT -= dt; this.coverCD -= dt; this.brain(dt);
+      if (this.throwT > 0) this.throwT -= dt;
+      // без дела солдат не стоит истуканом: время от времени оглядывается
+      if (!this.moving && !this.order && !this.path && !this.weapons.some(w => w.target || w.point)) {
+        this.lookT -= dt;
+        if (this.lookT <= 0) { this.lookT = 3 + Math.random() * 7; this.angle = normAng(this.angle + (Math.random() - 0.5) * 1.4); }
+      }
+    }
     if (this.flash > 0) this.flash -= dt;
     this.anim += dt;
     this.handleOrder(dt);
@@ -518,7 +528,76 @@ class Unit {
     return best;
   }
 
+  // локальный обход: смотрим вперёд по ходу и выбираем свободное направление, никого не толкая
+  avoid(desired, dt) {
+    const veh = this.cls !== 'inf';
+    const look = veh ? this.radius + 8 + Math.max(6, (this.curSpd || 0) * 0.9) : this.radius * 2 + 8;
+    const near = [];
+    forNearUnits(this.x, this.y, look + 24, v => {
+      if (v === this || !v.alive) return;
+      if (veh && v.cls === 'inf' && v.side !== this.side) return;   // вражескую пехоту танк давит
+      near.push(v);
+    });
+    const free = () => { this.waitT = 0; return [desired, 1]; };
+    if (!near.length) return free();
+    const blockedBy = (a) => {
+      const ca = Math.cos(a), sa = Math.sin(a);
+      let hit = null, hd = 1e9;
+      for (const v of near) {
+        const dx = v.x - this.x, dy = v.y - this.y;
+        const along = dx * ca + dy * sa;
+        if (along <= 0 || along > look + v.radius) continue;
+        const rr = this.radius + v.radius + (veh || v.cls !== 'inf' ? 3 : 1.5);
+        if (Math.abs(-dx * sa + dy * ca) < rr && along < hd) { hd = along; hit = v; }
+      }
+      return hit;
+    };
+    const front = blockedBy(desired);
+    if (!front) return free();
+    const gap = dist(front, this) - this.radius - front.radius;
+    // впереди идёт в ту же сторону — пристроиться следом, а не лезть в обход
+    if (front.moving && front.path && Math.cos(normAng(front.angle - desired)) > 0.5)
+      return [desired, clamp((gap - 2) / 12, 0, 1)];
+    // свой стоящий пехотинец отходит в сторону (перед техникой — сразу, перед пехотой — если ждём)
+    if (front.cls === 'inf' && front.side === this.side && !front.path && (veh || this.waitT > 0.5)) front.giveWay(this, desired);
+    const offs = veh ? [0.35, 0.7, 1.05] : [0.45, 0.9, 1.35, 1.8];
+    for (const o of offs) for (const sd of [this.avoidSide, -this.avoidSide]) {
+      const a = desired + o * sd;
+      if (blockedBy(a)) continue;
+      const pr = this.radius + 6;
+      if (!G.map.passablePx(this.x + Math.cos(a) * pr, this.y + Math.sin(a) * pr, this.cls)) continue;
+      this.avoidSide = sd; this.waitT = 0;
+      return [a, veh ? 0.6 : 0.85];
+    }
+    // обойти негде — подождать; застревание само перестроит путь в обход
+    this.waitT += dt;
+    return [desired, gap > 4 ? 0.3 : 0];
+  }
+  // пехотинец отходит с дороги
+  giveWay(o, a) {
+    if (this.dodge || this.path) return;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const side = (-(this.x - o.x) * sa + (this.y - o.y) * ca) >= 0 ? 1 : -1;
+    const dd = o.radius + this.radius + 7;
+    for (const sd of [side, -side]) {
+      const tx = this.x - sa * sd * dd + ca * 2, ty = this.y + ca * sd * dd + sa * 2;
+      if (G.map.passablePx(tx, ty, 'inf')) { this.dodge = { x: tx, y: ty, t: 3 }; return; }
+    }
+  }
+  dodgeStep(dt) {
+    const o = this.dodge, dx = o.x - this.x, dy = o.y - this.y, d = Math.hypot(dx, dy);
+    o.t -= dt;
+    if (d < 1.5 || o.t <= 0) { this.dodge = null; this.moving = false; return; }
+    const a = Math.atan2(dy, dx), st = Math.min(d, this.speed * (this.isProne() ? 0.45 : 1.15) * dt);
+    const nx = this.x + Math.cos(a) * st, ny = this.y + Math.sin(a) * st;
+    const m = G.map;
+    if (m.passablePx(nx, ny, 'inf') && m.infStepOK(this.tileX, this.tileY, Math.floor(nx / TILE), Math.floor(ny / TILE))) {
+      this.x = nx; this.y = ny; this.angle = a; this.moving = true; this.walkD = (this.walkD || 0) + st;
+    } else { this.dodge = null; this.moving = false; }
+  }
+
   moveStep(dt) {
+    if (this.dodge && !this.path) { this.dodgeStep(dt); return; }
     if (!this.path || this.pathI >= this.path.length) { this.moving = false; this.curSpd = 0; this.idleTurret(dt); return; }
     // пехота в режиме атаки с ходу останавливается при наличии цели
     if (this.order && this.order.type === 'amove' && this.weapons.some(w => w.target && w.target.alive)) {
@@ -541,11 +620,12 @@ class Unit {
     if (this.cls === 'veh' && this.hp < this.maxHp * 0.3) spd *= 0.6;
     if (this.cls === 'gun' && this.weapons[0] && this.weapons[0].cd > 0 && G.time - this.lastFire < 1) spd = 0;
     let nx = this.x, ny = this.y;
-    const desired = Math.atan2(dy, dx);
+    const [desired, avK] = this.avoid(Math.atan2(dy, dx), dt);
     if (this.cls === 'inf') {
       this.angle = desired;
-      const step = Math.min(d, spd * dt);
+      const step = Math.min(d, spd * avK * dt);
       nx += Math.cos(desired) * step; ny += Math.sin(desired) * step;
+      this.walkD = (this.walkD || 0) + step;
     } else {
       // техника: разгон, торможение перед поворотом и в конце пути, разворот на месте медленный
       const diff = normAng(desired - this.angle);
@@ -554,7 +634,7 @@ class Unit {
       // на скорости поворачивает хуже, чем на малом ходу
       const turn = this.tpl.turn * dt * (1 - 0.35 * Math.min(1, cur / Math.max(1, this.speed)));
       this.angle = normAng(this.angle + clamp(diff, -turn, turn));
-      let target = Math.abs(diff) < 1.0 ? spd * Math.max(0.15, Math.cos(diff) ** 2) : 0;
+      let target = Math.abs(diff) < 1.0 ? spd * avK * Math.max(0.15, Math.cos(diff) ** 2) : 0;
       // дистанция до конца пути — успеть затормозить
       let rem = d;
       for (let i = this.pathI + 1; i < this.path.length && rem < 400; i++) rem += Math.hypot(this.path[i].x - this.path[i - 1].x, this.path[i].y - this.path[i - 1].y);
@@ -591,7 +671,9 @@ class Unit {
         } else {
           this.repathN++;
           const fx = fin.x, fy = fin.y;
+          PF.penal = unitPenalty(this, fx, fy);
           this.setPath(fx + rand(-6, 6), fy + rand(-6, 6));
+          PF.penal = null;
         }
       }
     }
@@ -821,6 +903,7 @@ class Unit {
       const dd = Math.hypot(px - this.x, py - this.y);
       const sp = (0.25 + dd / TILE * 0.08) * TILE;
       const gx = px + gauss() * sp, gy = py + gauss() * sp;
+      this.throwT = 0.7;
       G.projectiles.push({ kind: 'grenade', x: this.x, y: this.y, sx: this.x, sy: this.y, tx: gx, ty: gy, t: 0, T: Math.max(0.5, Math.hypot(gx - this.x, gy - this.y) / d.speed), w: d, owner: this, z0: 4 });
       if (this.side === 'player' && Math.random() < 0.3) addFloat(this.x, this.y, 'Граната!', '#ffd27a');
       return;
@@ -1130,47 +1213,63 @@ function addFloat(x, y, text, color) {
 // ------------------------------------------------------------
 //  Разделение юнитов (простая физика столкновений)
 // ------------------------------------------------------------
-function separate(dt) {
-  const cell = 48;
-  const grid = new Map();
-  const units = G.units;
-  for (const u of units) {
+// сетка юнитов на шаг: быстрый поиск соседей
+const UG = new Map();
+function buildUnitGrid() {
+  UG.clear();
+  for (const u of G.units) {
     if (!u.alive) continue;
-    const k = ((u.x / cell) | 0) * 1000 + ((u.y / cell) | 0);
-    let a = grid.get(k); if (!a) grid.set(k, a = []);
+    const k = ((u.x / 48) | 0) * 1000 + ((u.y / 48) | 0);
+    let a = UG.get(k); if (!a) UG.set(k, a = []);
     a.push(u);
   }
-  const m = G.map;
-  for (const u of units) {
-    if (!u.alive) continue;
-    const cx = (u.x / cell) | 0, cy = (u.y / cell) | 0;
-    for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-      const a = grid.get((cx + ox) * 1000 + cy + oy);
-      if (!a) continue;
-      for (const v of a) {
-        if (v.id <= u.id) continue;
-        const dx = v.x - u.x, dy = v.y - u.y;
-        const rr = u.radius + v.radius + (u.cls === 'inf' && v.cls === 'inf' ? 1.5 : 1);
-        const d2 = dx * dx + dy * dy;
-        if (d2 >= rr * rr) continue;
-        const d = Math.sqrt(d2) || 0.01;
-        const ov = (rr - d);
-        let wu, wv;
-        const uHeavy = u.cls !== 'inf', vHeavy = v.cls !== 'inf';
-        if (uHeavy && !vHeavy) { wu = 0; wv = 1; }
-        else if (!uHeavy && vHeavy) { wu = 1; wv = 0; }
-        else {
-          // движущийся уступает меньше
-          wu = u.moving && !v.moving ? 0.3 : (!u.moving && v.moving ? 0.7 : 0.5); wv = 1 - wu;
-        }
-        const push = Math.min(ov, 40 * dt + ov * 0.25);
-        const nx = dx / d, ny = dy / d;
-        const ux = u.x - nx * push * wu, uy = u.y - ny * push * wu;
-        const vx = v.x + nx * push * wv, vy = v.y + ny * push * wv;
-        if (wu && m.passablePx(ux, uy, u.cls)) { u.x = ux; u.y = uy; }
-        if (wv && m.passablePx(vx, vy, v.cls)) { v.x = vx; v.y = vy; }
-      }
+}
+function forNearUnits(x, y, r, cb) {
+  const x0 = ((x - r) / 48) | 0, x1 = ((x + r) / 48) | 0, y0 = ((y - r) / 48) | 0, y1 = ((y + r) / 48) | 0;
+  for (let gx = x0; gx <= x1; gx++) for (let gy = y0; gy <= y1; gy++) {
+    const a = UG.get(gx * 1000 + gy);
+    if (a) for (const v of a) cb(v);
+  }
+}
+// клетки под стоящими юнитами — путь в обход них
+function unitPenalty(u, fx, fy) {
+  const W = G.map.W, set = new Set(), goal = Math.floor(fy / TILE) * W + Math.floor(fx / TILE);
+  forNearUnits(u.x, u.y, TILE * 7, v => {
+    if (v === u || !v.alive || v.moving) return;
+    if (u.cls === 'inf' && v.cls === 'inf') return;
+    const r = v.cls === 'inf' ? 0 : 1;
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+      const i = (v.tileY + b) * W + v.tileX + a;
+      if (i !== goal) set.add(i);
     }
+  });
+  return set;
+}
+
+function separate(dt) {
+  const m = G.map;
+  for (const u of G.units) {
+    if (!u.alive) continue;
+    forNearUnits(u.x, u.y, 40, v => {
+      if (v.id <= u.id || !v.alive) return;
+      const uV = u.cls !== 'inf', vV = v.cls !== 'inf';
+      if ((uV && !vV && v.side !== u.side) || (vV && !uV && u.side !== v.side)) return;   // танк и вражеская пехота: давит
+      const dx = v.x - u.x, dy = v.y - u.y;
+      const rr = u.radius + v.radius + (!uV && !vV ? 1.5 : 1);
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= rr * rr) return;
+      const d = Math.sqrt(d2) || 0.01, ov = rr - d;
+      let wu, wv, k;
+      if (u.moving !== v.moving) { wu = u.moving ? 1 : 0; wv = 1 - wu; k = 0.5; }        // уступает идущий, стоящего не толкаем
+      else if (u.moving) { wu = uV === vV ? 0.5 : (uV ? 0 : 1); wv = 1 - wu; k = 0.4; }  // оба идут: пехота сторонится техники
+      else { wu = wv = 0.5; k = 0.08; }                                                  // оба стоят: медленно расходятся
+      const push = Math.min(ov, 30 * dt * k + ov * k);
+      const nx = dx / d, ny = dy / d;
+      const ux = u.x - nx * push * wu, uy = u.y - ny * push * wu;
+      const vx = v.x + nx * push * wv, vy = v.y + ny * push * wv;
+      if (wu && m.passablePx(ux, uy, u.cls)) { u.x = ux; u.y = uy; }
+      if (wv && m.passablePx(vx, vy, v.cls)) { v.x = vx; v.y = vy; }
+    });
   }
 }
 

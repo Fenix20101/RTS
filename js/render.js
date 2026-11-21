@@ -913,6 +913,26 @@ const R = {
     this.wview = { x0: wx0, y0: wy0, x1: wx1, y1: wy1 };
     ctx.imageSmoothingEnabled = true;
     if (wx1 > wx0 && wy1 > wy0) ctx.drawImage(this.terrain, wx0, wy0, wx1 - wx0, wy1 - wy0, wx0, wy0, wx1 - wx0, wy1 - wy0);
+    // при сильном приближении земля мылится — мелкое зерно поверх возвращает фактуру
+    if (this.cam.z > 1.9 && wx1 > wx0 && wy1 > wy0) {
+      if (!this.grainPat) {
+        const S = 96, c = document.createElement('canvas'); c.width = c.height = S;
+        const g = c.getContext('2d'), id = g.createImageData(S, S), rng = RNG(777);
+        for (let i = 0; i < S * S; i++) {
+          const v = 128 + (rng() - 0.5) * 120 + (rng() < 0.04 ? (rng() - 0.6) * 160 : 0);
+          id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255;
+        }
+        g.putImageData(id, 0, 0);
+        this.grainPat = ctx.createPattern(c, 'repeat');
+        this.grainPat.setTransform && this.grainPat.setTransform(new DOMMatrix().scale(0.42));
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.globalAlpha = Math.min(0.32, (this.cam.z - 1.9) * 0.16);
+      ctx.fillStyle = this.grainPat;
+      ctx.fillRect(wx0, wy0, wx1 - wx0, wy1 - wy0);
+      ctx.restore();
+    }
     this.drawGroundMarks(ctx);
 
     // --- объекты (экранное изо-пространство) ---
@@ -1323,12 +1343,14 @@ const R = {
   },
 
   // фигурка солдата в точке (x, y), смотрит под углом ang
-  figure(ctx, x, y, ang, f, type, moving, anim, prone, aiming) {
+  figure(ctx, x, y, ang, f, type, moving, anim, prone, aiming, u) {
     const A = ASSETS.units, sp = A && A[f.id + '_inf_' + type];
     if (sp) {
       let pose;
-      if (prone) pose = 'prone';
-      else if (moving) pose = 'w' + Math.floor((((anim * 13 / (Math.PI * 2)) % 1) + 1) % 1 * 6);
+      const wd = u && u.walkD != null ? u.walkD : anim * 24;
+      if (prone) pose = moving && sp.c0 ? 'c' + (Math.floor(wd / 7 * 4) % 4) : 'prone';   // ползком: цикл 4 кадра на ~1,6 м
+      else if (u && u.throwT > 0 && sp.throw) pose = 'throw';
+      else if (moving) pose = sp.w7 ? 'w' + (Math.floor(wd / 11 * 8) % 8) : 'w' + (Math.floor(wd / 11 * 6) % 6);   // шаг по пройденному пути — ноги не скользят
       else pose = aiming ? 'aim' : 'stand';
       const fr = sp[pose];
       if (fr) { this.blit(ctx, sp.img, fr[this.dirIdx(ang, fr.length)], x, y); return; }
@@ -1378,7 +1400,7 @@ const R = {
   drawInf(ctx, u, f) {
     const prone = u.isProne();
     const aiming = u.weapons.some(w => w.target) && !u.moving;
-    this.figure(ctx, u.x, u.y, u.angle, f, u.type, u.moving, u.anim, prone, aiming);
+    this.figure(ctx, u.x, u.y, u.angle, f, u.type, u.moving, u.anim, prone, aiming, u);
     this.drawBars(ctx, u, prone ? 5 : 13);
   },
 
@@ -1387,7 +1409,7 @@ const R = {
   dirIdx(a, n = UNIT_SPRITES.dirs) { return ((Math.round(a / (Math.PI * 2) * n) % n) + n) % n; },
   blit(ctx, img, fr, wx, wy) {
     if (!fr) return;
-    const S = UNIT_SPRITES.S, [ix, iy] = ISO(wx, wy, 0);
+    const S = fr[6] || UNIT_SPRITES.S, [ix, iy] = ISO(wx, wy, 0);
     ctx.drawImage(img, fr[0], fr[1], fr[2], fr[3], ix - fr[4] / S, iy - fr[5] / S, fr[2] / S, fr[3] / S);
   },
   muzzleFlash(ctx, x, y, z) {

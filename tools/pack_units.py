@@ -54,7 +54,9 @@ for name, parts in sorted(models.items()):
     for k, (part, i, im, ax, ay) in enumerate(frames):
         px, py = pos[k]
         atlas.paste(im, (px, py))
-        entry.setdefault(part, [None] * (max(parts[part]) + 1))[i] = [px, py, im.width, im.height, round(ax, 1), round(ay, 1)]
+        rec = [px, py, im.width, im.height, round(ax, 1), round(ay, 1)]
+        if '_inf_' in name: rec.append(5.0)   # пехота отрендерена крупнее (5 px на единицу)
+        entry.setdefault(part, [None] * (max(parts[part]) + 1))[i] = rec
     path = os.path.join(OUT, 'units', name + '.webp')
     atlas.save(path, 'WEBP', quality=90, method=4)
     total += os.path.getsize(path)
