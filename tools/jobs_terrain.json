@@ -1,0 +1,14 @@
+[
+  {"name": "grass", "seed": 101, "prompt": "seamless texture, top-down aerial view of short meadow grass, summer, uniform, natural green, photographic ground texture, flat lighting, high detail"},
+  {"name": "field", "seed": 202, "prompt": "seamless texture, top-down aerial view of ripe wheat field, straight parallel crop rows, golden yellow, photographic ground texture, flat lighting"},
+  {"name": "forest", "seed": 303, "prompt": "seamless texture, top-down view of forest floor, moss, fallen leaves, pine needles, dark green and brown, photographic ground texture, flat lighting"},
+  {"name": "water", "seed": 404, "prompt": "seamless texture, top-down view of calm river water surface, small ripples, dark green-blue, photographic texture, flat lighting"},
+  {"name": "road", "seed": 505, "prompt": "seamless texture, top-down view of rural dirt road surface, packed brown soil, small stones, wheel ruts, photographic ground texture, flat lighting"},
+  {"name": "sand", "seed": 606, "prompt": "seamless texture, top-down view of river bank sand with small pebbles, light beige, photographic ground texture, flat lighting"},
+  {"name": "rubble", "seed": 707, "prompt": "seamless texture, top-down view of destroyed brick house rubble, broken bricks, plaster, wooden beams, dust, photographic texture, flat lighting"},
+  {"name": "planks", "seed": 808, "prompt": "seamless texture, top-down view of old weathered wooden bridge planks, parallel boards, photographic texture, flat lighting"},
+  {"name": "roof", "seed": 909, "prompt": "seamless texture, old red clay roof tiles, rows, weathered, photographic texture, flat lighting, top-down"},
+  {"name": "wall", "seed": 1010, "prompt": "seamless texture, old whitewashed plaster wall of rural village house, slightly dirty, cracks, photographic texture, flat lighting"},
+  {"name": "thatch", "seed": 1111, "prompt": "seamless texture, old thatched straw roof, grey-brown, photographic texture, flat lighting"},
+  {"name": "logs", "seed": 1212, "prompt": "seamless texture, wall of horizontal dark wooden logs of russian village izba, photographic texture, flat lighting"}
+]

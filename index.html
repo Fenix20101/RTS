@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стальной рубеж — демо</title>
+<style>
+  :root { --panel: rgba(28,32,24,0.92); --edge: #5b6343; --text: #e4e0cc; --muted: #a7a58f; --acc: #d9b45a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e0b; color: var(--text); font: 14px/1.4 "Segoe UI", Arial, sans-serif; user-select: none; }
+  /* цветокоррекция «как в старых военных стратегиях»: приглушённо, тепло, чуть контрастнее */
+  #game { position: fixed; inset: 0; display: block; filter: saturate(0.74) sepia(0.14) contrast(1.07) brightness(0.98); }
+  .hidden { display: none !important; }
+  button { font: inherit; color: var(--text); background: #3b4129; border: 1px solid var(--edge); border-radius: 3px; padding: 5px 10px; cursor: pointer; }
+  button:hover:not(:disabled) { background: #4c5434; border-color: var(--acc); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.active { background: #7a5e22; border-color: var(--acc); }
+
+  /* ----- экраны ----- */
+  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 20;
+    background: radial-gradient(ellipse at 50% 30%, #2b3220 0%, #10130d 70%); padding: 16px; }
+  .box { background: var(--panel); border: 1px solid var(--edge); box-shadow: 0 10px 40px rgba(0,0,0,0.6); padding: 26px 30px; max-width: 760px; width: 100%; max-height: 100%; overflow: auto; }
+  .logo { font: 900 46px/1 Georgia, serif; letter-spacing: 3px; color: #e8dcb0; text-shadow: 0 3px 0 #000, 0 0 30px rgba(217,180,90,0.25); margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 22px; letter-spacing: 1px; }
+  h3 { margin: 18px 0 8px; color: var(--acc); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
+  .facs { display: flex; gap: 10px; flex-wrap: wrap; }
+  .fac { flex: 1; min-width: 150px; padding: 12px; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .fac.sel { background: #5e5020; border-color: var(--acc); }
+  .fflag { width: 30px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #000; }
+  .fflag i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 6px; }
+  td, th { padding: 3px 8px; border-bottom: 1px solid rgba(91,99,67,0.4); text-align: left; }
+  th { color: var(--acc); font-weight: 600; }
+  td:first-child { color: var(--muted); }
+  .big { font-size: 18px; padding: 10px 28px; margin-top: 20px; background: #6b5520; border-color: var(--acc); font-weight: 700; letter-spacing: 1px; }
+  #brief-text p, #brief-text li { color: #d6d2bd; }
+  #brief-text ol { padding-left: 22px; }
+
+  /* ----- HUD ----- */
+  #top { position: fixed; top: 0; left: 0; right: 0; height: 38px; background: linear-gradient(#1d2117, rgba(29,33,23,0.85)); border-bottom: 1px solid var(--edge);
+    display: flex; align-items: center; gap: 12px; padding: 0 12px; z-index: 5; }
+  #mission-title { font-weight: 700; color: #e8dcb0; white-space: nowrap; }
+  #timer { font-family: Consolas, monospace; color: var(--acc); }
+  #top .sp { flex: 1; }
+  #top button { padding: 3px 9px; }
+  #objectives { position: fixed; top: 46px; right: 10px; background: var(--panel); border: 1px solid var(--edge); padding: 8px 12px; z-index: 5; font-size: 13px; min-width: 220px; }
+  #objectives::before { content: 'ЗАДАЧИ'; display: block; color: var(--acc); font-size: 11px; letter-spacing: 2px; margin-bottom: 4px; }
+  .obj.done { color: #8fd27a; text-decoration: line-through; }
+  #log { position: fixed; top: 46px; left: 10px; z-index: 5; max-width: 520px; pointer-events: none; }
+  .msg { background: rgba(20,24,16,0.82); border-left: 3px solid #8aa0b8; padding: 4px 10px; margin-bottom: 3px; font-size: 13px; transition: opacity 1s; }
+  .msg.good { border-color: #6fd35a; } .msg.bad { border-color: #e0503c; } .msg.warn { border-color: #e5b43a; }
+  .msg.fade { opacity: 0; }
+  .mt { color: var(--muted); font-family: Consolas, monospace; font-size: 11px; }
+
+  /* ----- нижняя панель: стальной пульт с заклёпками ----- */
+  #panel { position: fixed; left: 0; right: 0; bottom: 0; height: 168px; display: flex; gap: 10px; padding: 12px 14px 10px; z-index: 5;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0 2px, rgba(0,0,0,0.025) 2px 5px),
+      radial-gradient(ellipse at 30% 0%, rgba(120,128,96,0.18), transparent 60%),
+      linear-gradient(#4a4c3c, #33352a 40%, #26281f);
+    border-top: 2px solid #6d6f58; box-shadow: inset 0 1px 0 rgba(255,255,240,0.18), inset 0 -2px 6px rgba(0,0,0,0.5), 0 -4px 14px rgba(0,0,0,0.55); }
+  #panel::before, #panel::after { content: ""; position: absolute; top: 5px; width: 7px; height: 7px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #b9b79c, #55553f 60%, #2a2a20); box-shadow: 0 1px 1px rgba(0,0,0,0.6); }
+  #panel::before { left: 5px; } #panel::after { right: 5px; }
+  #minimap { width: 240px; height: 120px; cursor: pointer; flex: none; image-rendering: auto; padding: 3px;
+    background: #0d0e09; border: 1px solid #12130c; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,230,0.12), 0 0 0 3px #3a3c2f, 0 0 0 4px #1a1b14; }
+  #info { flex: 1; overflow: auto; padding: 8px 12px; font-size: 13px; background: linear-gradient(#17180f, #1f2116); border: 1px solid #12130c;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.75), 0 1px 0 rgba(255,255,230,0.12); }
+  .card { display: flex; gap: 12px; }
+  .card .cbody { flex: 1; min-width: 0; }
+  canvas.pt { flex: none; width: 112px; height: 96px; border: 1px solid #0c0d08;
+    background: radial-gradient(ellipse at 50% 60%, #4b5236, #23261a 75%); box-shadow: inset 0 0 12px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,230,0.1); }
+  .ubtn canvas.pt { width: 44px; height: 36px; position: absolute; right: 2px; bottom: 4px; border: none; background: none; box-shadow: none; }
+  #cmds { width: 230px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; flex: none; align-content: start; }
+  #cmds button { font-size: 11px; padding: 5px 3px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px;
+    background: linear-gradient(#5a5c48, #3c3e30); border: 1px solid #1c1d15; border-radius: 2px; color: #ece6c8;
+    box-shadow: inset 0 1px 0 rgba(255,255,230,0.25), inset 0 -2px 0 rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.5); text-shadow: 0 1px 1px #000; }
+  #cmds button:hover:not(:disabled) { background: linear-gradient(#6b6c52, #4a4b38); border-color: #8a7a3a; }
+  #cmds button:active:not(:disabled), #cmds button.active { background: linear-gradient(#3a3c2e, #4c4e3c); box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); }
+  #cmds button kbd { color: var(--acc); font-family: Consolas, monospace; }
+  .hint { color: var(--muted); line-height: 1.7; }
+  .card .cn { font-size: 16px; font-weight: 700; } .cn.enemy { color: #ff8a70; }
+  .card .cc { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .bar { position: relative; height: 14px; background: #111; border: 1px solid #333; margin: 4px 0 6px; max-width: 340px; }
+  .bar span { position: absolute; left: 0; top: 0; bottom: 0; }
+  .bar em { position: absolute; inset: 0; text-align: center; font-size: 10px; font-style: normal; line-height: 13px; text-shadow: 0 1px 1px #000; }
+  .row { font-size: 12px; color: #cfcbb5; } .row.w { color: #b9b59d; }
+  .warn { color: #ffcf4a; }
+  .multi-h { color: var(--acc); font-size: 12px; margin-bottom: 4px; }
+  .multi { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ubtn { position: relative; display: flex; flex-direction: column; align-items: flex-start; width: 132px; height: 46px; padding: 4px 6px 7px; font-size: 11px; overflow: hidden;
+    background: linear-gradient(#4a4c3a, #33352a); border: 1px solid #1a1b13; box-shadow: inset 0 1px 0 rgba(255,255,230,0.18); }
+  .ubtn .un { max-width: 80px !important; }
+  .ubtn .ut { font-weight: 800; color: var(--acc); } .ubtn .un { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .ubtn .uc { position: absolute; right: 5px; top: 3px; font-weight: 700; }
+  .ubtn .uhp { position: absolute; left: 0; bottom: 0; height: 3px; background: #62d14a; }
+
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); z-index: 30; padding: 16px; }
+  #end h1 { font: 900 54px Georgia, serif; margin: 0 0 14px; letter-spacing: 6px; }
+  #end h1.win { color: #9fe07a; } #end h1.lose { color: #e0604a; }
+  .stats div { margin: 4px 0; }
+  .keys td:first-child { color: var(--acc); font-family: Consolas, monospace; white-space: nowrap; }
+
+  @media (max-width: 800px) {
+    #panel { height: auto; flex-wrap: wrap; } #cmds { width: 100%; grid-template-columns: repeat(4, 1fr); }
+    #cmds #btn-face { grid-column: span 2; }
+    #minimap { width: 160px; height: 80px; } #objectives { display: none; }
+    .logo { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- Главное меню -->
+<div id="menu" class="screen">
+  <div class="box">
+    <div class="logo">СТАЛЬНОЙ РУБЕЖ</div>
+    <div class="sub">Тактическая стратегия · Вторая мировая · демо-версия</div>
+    <h3>Ваша сторона</h3>
+    <div class="facs" id="fac-player"></div>
+    <h3>Противник</h3>
+    <div class="facs" id="fac-enemy"></div>
+    <h3>Техника и войска сторон</h3>
+    <table id="roster"></table>
+    <button class="big" id="btn-start">Демо-миссия «Переправа» ▶</button>
+    <button class="big hidden" id="btn-quit" style="background:#3b4129;margin-left:8px">Выход</button>
+    <div class="sub" style="margin:12px 0 0;font-size:12px">F11 — полный экран</div>
+  </div>
+</div>
+
+<!-- Брифинг -->
+<div id="briefing" class="screen hidden">
+  <div class="box">
+    <h3>Брифинг</h3>
+    <div class="logo" style="font-size:28px" id="brief-title"></div>
+    <div id="brief-text"></div>
+    <button class="big" id="btn-go">В бой!</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="top">
+    <span id="mission-title"></span>
+    <span id="timer">00:00</span>
+    <span class="sp"></span>
+    <button id="btn-speed" title="Скорость игры (+)">×1</button>
+    <button id="btn-pause" title="Пауза (P / Esc)">⏸</button>
+    <button id="btn-sound" title="Звук (M)">🔊</button>
+    <button id="btn-help" title="Справка (F1)">?</button>
+  </div>
+  <div id="objectives"></div>
+  <div id="log"></div>
+  <div id="panel">
+    <canvas id="minimap" width="320" height="160"></canvas>
+    <div id="info"></div>
+    <div id="cmds">
+      <button id="btn-amove"><kbd>A</kbd> Атака с ходу</button>
+      <button id="btn-fire"><kbd>F</kbd> Огонь по площади</button>
+      <button id="btn-stop"><kbd>S</kbd> Стоп</button>
+      <button id="btn-hold"><kbd>H</kbd> Не стрелять</button>
+      <button id="btn-prone" title="Пехота ложится и передвигается ползком (повторно — отменить)"><kbd>Z</kbd> Лечь</button>
+      <button id="btn-stand" title="Пехота не залегает сама, пока её не прижмут огнём (повторно — отменить)"><kbd>X</kbd> Встать</button>
+      <button id="btn-face" title="Техника и пушки разворачиваются на месте в сторону точки"><kbd>R</kbd> Развернуться</button>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="box" style="max-width:360px;text-align:center">
+    <div class="logo" style="font-size:32px">ПАУЗА</div>
+    <button class="big" id="btn-resume">Продолжить</button><br>
+    <button id="btn-menu" style="margin-top:12px">Выйти в меню</button>
+  </div>
+</div>
+
+<div id="help" class="overlay hidden">
+  <div class="box">
+    <h3>Управление</h3>
+    <table class="keys">
+      <tr><td>ЛКМ / рамка</td><td>Выбрать юнитов (Shift — добавить), двойной клик — все такие же на экране</td></tr>
+      <tr><td>ПКМ</td><td>Идти в точку / атаковать врага под курсором</td></tr>
+      <tr><td>Ctrl + ПКМ</td><td>Огонь по площади (как F)</td></tr>
+      <tr><td>A</td><td>Атака с ходу — идти, вступая в бой по пути</td></tr>
+      <tr><td>F</td><td>Огонь по площади (гаубицы, танки, пушки)</td></tr>
+      <tr><td>S / H</td><td>Стоп / не открывать огонь (засада)</td></tr>
+      <tr><td>Z / X</td><td>Пехота: лечь (ползком) / встать. Повторное нажатие — снова по обстановке</td></tr>
+      <tr><td>R</td><td>Техника и пушки: развернуться на месте в сторону точки (ЛКМ)</td></tr>
+      <tr><td>Ctrl/Alt + 1…9</td><td>Назначить группу; 1…9 — выбрать, двойное нажатие — к группе</td></tr>
+      <tr><td>Стрелки, края экрана, СКМ</td><td>Прокрутка карты; колесо — масштаб</td></tr>
+      <tr><td>Пробел</td><td>Камера к последнему событию</td></tr>
+      <tr><td>P / Esc, +, M</td><td>Пауза, скорость, звук</td></tr>
+      <tr><td>Alt (удерж.)</td><td>Показать здоровье всех юнитов</td></tr>
+    </table>
+    <h3>Механика</h3>
+    <p class="row">Броня танков разная у лба, бортов и кормы — заходите с флангов. Пехота в лесу, у домов и за мешками укрыта и замечается только вблизи. Пулемёты прижимают пехоту к земле. Танки давят вражескую пехоту. Снайпер и замаскированные ПТ-пушки видны лишь вблизи, пока не выстрелят. Гаубицы бьют далеко, но только по тому, что видят ваши войска. Грузовик пополняет боезапас и чинит технику рядом.</p>
+    <button class="big" id="btn-help-close">Понятно</button>
+  </div>
+</div>
+
+<div id="end" class="overlay hidden">
+  <div class="box" style="max-width:480px;text-align:center">
+    <h1></h1>
+    <div class="stats"></div>
+    <button class="big" id="btn-restart">В главное меню</button>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/map.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/mission.js"></script>
+<script src="assets/trees.js" onerror="void 0"></script>
+<script src="assets/units.js" onerror="void 0"></script>
+<script src="js/assets.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

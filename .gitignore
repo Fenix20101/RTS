@@ -1,0 +1,12 @@
+.venv-build/
+desktop/build/
+tools/blender/
+tools/raw/
+tools/inf_raw/
+tools/units_raw/
+tools/props_raw/
+tools/_prev_tmp/
+*.log
+__pycache__/
+*.pyc
+*.spec

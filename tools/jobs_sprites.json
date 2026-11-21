@@ -1,0 +1,5 @@
+[
+  {"name": "trees_leafy", "seed": 2101, "rembg": true, "prompt": "game asset sheet, six separate realistic deciduous trees (oak, birch, linden, poplar), summer foliage, isometric view from above at 45 degrees, each tree isolated with space between, plain pure white background, photorealistic, soft daylight from top left"},
+  {"name": "trees_pine", "seed": 2202, "rembg": true, "prompt": "game asset sheet, six separate realistic pine and spruce trees, isometric view from above at 45 degrees, each tree isolated with space between, plain pure white background, photorealistic, soft daylight from top left"},
+  {"name": "bushes", "seed": 2303, "rembg": true, "prompt": "game asset sheet, nine separate small realistic green shrubs and bushes, isometric view from above, each isolated with space between, plain pure white background, photorealistic, soft daylight"}
+]
